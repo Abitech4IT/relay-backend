@@ -1,6 +1,9 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import { errorHandler } from "./common/middleware/error-handler";
+
+import authRoutes from "./modules/auth/auth.routes";
 
 const app = express();
 
@@ -22,5 +25,8 @@ app.get("/health", (_req, res) => {
     message: "Relay API is running",
   });
 });
+app.use("/api/auth", authRoutes);
+
+app.use(errorHandler);
 
 export default app;
