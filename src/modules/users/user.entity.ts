@@ -8,6 +8,7 @@ import {
 } from "typeorm";
 import { UserRole } from "../../common/constants/roles";
 import { RefreshToken } from "../auth/refresh-token.entity";
+import { ServiceRequest } from "../requests/request.entity";
 
 @Entity({ name: "users" })
 export class User {
@@ -63,4 +64,7 @@ export class User {
 
   @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user)
   refreshTokens!: RefreshToken[];
+
+  @OneToMany(() => ServiceRequest, (serviceRequest) => serviceRequest.user)
+  serviceRequests!: ServiceRequest[];
 }

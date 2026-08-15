@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { errorHandler } from "./common/middleware/error-handler";
 
 import authRoutes from "./modules/auth/auth.routes";
+import requestRoutes from "./modules/requests/request.routes";
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.get("/health", (_req, res) => {
   });
 });
 app.use("/api/auth", authRoutes);
+app.use("/api/requests", requestRoutes);
 
 app.use(errorHandler);
 
