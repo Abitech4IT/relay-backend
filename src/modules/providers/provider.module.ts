@@ -15,6 +15,8 @@ import { ProviderResultService } from "./provider-result.service";
 
 import { ProviderService } from "./provider.service";
 import { offerService } from "../offers/offer.module";
+import { rankingService } from "../offers/ranking/ranking.module";
+import { realtimeService } from "../realtime/realtime.service";
 
 const providerResultRepository = AppDataSource.getRepository(ProviderResult);
 
@@ -29,11 +31,11 @@ export const providerService = new ProviderService(
   providerResultService,
   requestService,
   offerService,
+  rankingService,
   {
     timeoutMs: env.PROVIDER_TIMEOUT_MS,
-
     retries: 1,
-
     retryDelayMs: 200,
   },
+  realtimeService,
 );

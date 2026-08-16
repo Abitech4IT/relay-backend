@@ -5,6 +5,7 @@ import { NormalizedProviderOffer } from "../providers/provider.types";
 import { OfferStatus } from "../../common/constants/offer-status";
 
 import { Offer } from "./offer.entity";
+import { RankedOffer } from "./offer.types";
 
 export class OfferService {
   constructor(private readonly repository: Repository<Offer>) {}
@@ -112,5 +113,24 @@ export class OfferService {
         createdAt: "ASC",
       },
     });
+  }
+
+  async saveRankings(rankings: RankedOffer[]): Promise<void> {
+    await Promise.all(
+      rankings.map((ranking) =>
+        this.repository.update(
+          {
+            id: ranking.offerId,
+          },
+          {
+            rank: ranking.rank,
+
+            score: ranking.score.toFixed(4),
+
+            rankingExplanation: ranking.breakdown as unknown as any,
+          },
+        ),
+      ),
+    );
   }
 }

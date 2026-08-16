@@ -1,22 +1,33 @@
 import "reflect-metadata";
-import dotenv from "dotenv";
 
-dotenv.config();
+import { createServer } from "http";
 
 import app from "./app";
+
 import { AppDataSource } from "./config/database";
 
-const PORT = process.env.PORT || 5000;
+import { env } from "./config/env";
 
-AppDataSource.initialize()
-  .then(() => {
+import { initializeRealtime } from "./modules/realtime/realtime.gateway";
+
+const httpServer = createServer(app);
+
+async function bootstrap() {
+  try {
+    await AppDataSource.initialize();
+
     console.log("Database connected successfully");
 
-    app.listen(PORT, () => {
-      console.log(`Relay API running on port ${PORT}`);
+    initializeRealtime(httpServer);
+
+    httpServer.listen(env.PORT, () => {
+      console.log(`Relay API running on port ${env.PORT}`);
     });
-  })
-  .catch((error) => {
-    console.error("Database connection failed:", error);
+  } catch (error) {
+    console.error("Application startup failed:", error);
+
     process.exit(1);
-  });
+  }
+}
+
+void bootstrap();

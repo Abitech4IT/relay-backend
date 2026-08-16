@@ -14,9 +14,29 @@ import {
 import { UserRole } from "../../../src/common/constants/roles";
 import { RequestStatus } from "../../../src/common/constants/request-status";
 
+import { generateRequestFingerprint } from "../../../src/common/utils/request-fingerprint";
+
 describe("Provider result persistence", () => {
   let userId: string;
   let requestId: string;
+
+  const requestInput = {
+    category: "vehicle-service",
+
+    customerProfile: {
+      firstName: "Jane",
+      lastName: "Doe",
+    },
+
+    asset: {
+      type: "vehicle",
+      attributes: {},
+    },
+
+    notes: null,
+
+    consent: true as const,
+  };
 
   beforeAll(async () => {
     if (!AppDataSource.isInitialized) {
@@ -43,31 +63,33 @@ describe("Provider result persistence", () => {
 
     userId = user.id;
 
+    const idempotencyKey = `provider-result-${Date.now()}`;
+
+    const requestFingerprint = generateRequestFingerprint(requestInput);
+
     const serviceRequest = await requestRepository.save(
       requestRepository.create({
         publicId: `REQ_PROVIDER_${Date.now()}`,
 
         userId: user.id,
 
-        category: "vehicle-service",
+        category: requestInput.category,
 
-        customerProfile: {
-          firstName: "Jane",
-          lastName: "Doe",
-        },
+        customerProfile: requestInput.customerProfile,
 
-        asset: {
-          type: "vehicle",
-          attributes: {},
-        },
+        asset: requestInput.asset,
 
-        notes: null,
+        notes: requestInput.notes,
 
-        consent: true,
+        consent: requestInput.consent,
 
         status: RequestStatus.CREATED,
 
-        idempotencyKey: `provider-result-${Date.now()}`,
+        idempotencyKey,
+
+        requestFingerprint,
+
+        processingStartedAt: null,
       }),
     );
 
@@ -130,8 +152,8 @@ describe("Provider result persistence", () => {
     const count = await repository.count({
       where: {
         requestId,
+
         provider: ProviderName.GAMMA,
-        externalResultId: externalOfferId,
       },
     });
 

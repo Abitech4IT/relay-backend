@@ -50,6 +50,20 @@ export class ServiceRequest {
   @OneToMany(() => Offer, (offer) => offer.request)
   offers!: Offer[];
 
+  @Column({
+    name: "processing_started_at",
+    type: "timestamptz",
+    nullable: true,
+  })
+  processingStartedAt!: Date | null;
+
+  @Column({
+    name: "request_fingerprint",
+    type: "varchar",
+    length: 64,
+  })
+  requestFingerprint!: string;
+
   @ManyToOne(() => User, {
     nullable: false,
     onDelete: "CASCADE",

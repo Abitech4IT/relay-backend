@@ -27,6 +27,34 @@ const createOfferServiceMock = () => ({
     .mockImplementation(async (_requestId, offer) => offer),
 });
 
+const createRankingServiceMock = () => ({
+  rankRequestOffers: jest.fn().mockResolvedValue(undefined),
+});
+
+const createRealtimeServiceMock = () => ({
+  safeEmitRequestStatus: jest.fn(),
+});
+
+const createDependencies = () => {
+  const providerResultService = createProviderResultServiceMock();
+
+  const requestService = createRequestServiceMock();
+
+  const offerService = createOfferServiceMock();
+
+  const rankingService = createRankingServiceMock();
+
+  const realtimeService = createRealtimeServiceMock();
+
+  return {
+    providerResultService,
+    requestService,
+    offerService,
+    rankingService,
+    realtimeService,
+  };
+};
+
 describe("ProviderService", () => {
   const providerRequest: ProviderRequest = {
     requestId: "REQ_TEST",
@@ -59,11 +87,13 @@ describe("ProviderService", () => {
       delayMs: 1,
     });
 
-    const providerResultService = createProviderResultServiceMock();
-
-    const requestService = createRequestServiceMock();
-
-    const offerService = createOfferServiceMock();
+    const {
+      providerResultService,
+      requestService,
+      offerService,
+      rankingService,
+      realtimeService,
+    } = createDependencies();
 
     const service = new ProviderService(
       [alpha, beta, gamma],
@@ -74,11 +104,15 @@ describe("ProviderService", () => {
 
       offerService as any,
 
+      rankingService as any,
+
       {
         timeoutMs: 20,
         retries: 1,
         retryDelayMs: 1,
       },
+
+      realtimeService as any,
     );
 
     const results = await service.processRequest(
@@ -108,8 +142,13 @@ describe("ProviderService", () => {
 
     expect(providerResultService.saveResult).toHaveBeenCalledTimes(3);
 
-    // Alpha and Gamma succeeded, Beta timed out.
     expect(offerService.saveNormalizedOffer).toHaveBeenCalledTimes(2);
+
+    expect(rankingService.rankRequestOffers).toHaveBeenCalledTimes(1);
+
+    expect(rankingService.rankRequestOffers).toHaveBeenCalledWith(
+      "internal-request-id",
+    );
 
     expect(requestService.updateStatus).toHaveBeenCalledWith(
       "internal-request-id",
@@ -119,6 +158,20 @@ describe("ProviderService", () => {
     expect(requestService.updateStatus).toHaveBeenCalledWith(
       "internal-request-id",
       RequestStatus.PARTIAL_RESULTS,
+    );
+
+    expect(realtimeService.safeEmitRequestStatus).toHaveBeenCalledWith(
+      "REQ_TEST",
+      RequestStatus.PROCESSING,
+    );
+
+    expect(realtimeService.safeEmitRequestStatus).toHaveBeenCalledWith(
+      "REQ_TEST",
+      RequestStatus.PARTIAL_RESULTS,
+      {
+        successfulProviders: 2,
+        totalProviders: 3,
+      },
     );
   });
 
@@ -136,11 +189,13 @@ describe("ProviderService", () => {
       forceTemporaryError: true,
     });
 
-    const providerResultService = createProviderResultServiceMock();
-
-    const requestService = createRequestServiceMock();
-
-    const offerService = createOfferServiceMock();
+    const {
+      providerResultService,
+      requestService,
+      offerService,
+      rankingService,
+      realtimeService,
+    } = createDependencies();
 
     const service = new ProviderService(
       [alpha, beta, gamma],
@@ -151,11 +206,15 @@ describe("ProviderService", () => {
 
       offerService as any,
 
+      rankingService as any,
+
       {
         timeoutMs: 20,
         retries: 1,
         retryDelayMs: 1,
       },
+
+      realtimeService as any,
     );
 
     const results = await service.processRequest("request-id", providerRequest);
@@ -164,23 +223,40 @@ describe("ProviderService", () => {
       results.some((result) => result.status === ProviderResultStatus.SUCCESS),
     ).toBe(false);
 
-    // No provider succeeded, therefore no Offer should be persisted.
+    expect(providerResultService.saveResult).toHaveBeenCalledTimes(3);
+
     expect(offerService.saveNormalizedOffer).not.toHaveBeenCalled();
 
-    expect(providerResultService.saveResult).toHaveBeenCalledTimes(3);
+    expect(rankingService.rankRequestOffers).not.toHaveBeenCalled();
 
     expect(requestService.updateStatus).toHaveBeenLastCalledWith(
       "request-id",
       RequestStatus.FAILED,
     );
+
+    expect(realtimeService.safeEmitRequestStatus).toHaveBeenCalledWith(
+      "REQ_TEST",
+      RequestStatus.PROCESSING,
+    );
+
+    expect(realtimeService.safeEmitRequestStatus).toHaveBeenCalledWith(
+      "REQ_TEST",
+      RequestStatus.FAILED,
+      {
+        successfulProviders: 0,
+        totalProviders: 3,
+      },
+    );
   });
 
   it("should move the request to READY_FOR_REVIEW when all providers succeed", async () => {
-    const providerResultService = createProviderResultServiceMock();
-
-    const requestService = createRequestServiceMock();
-
-    const offerService = createOfferServiceMock();
+    const {
+      providerResultService,
+      requestService,
+      offerService,
+      rankingService,
+      realtimeService,
+    } = createDependencies();
 
     const service = new ProviderService(
       [
@@ -203,14 +279,20 @@ describe("ProviderService", () => {
 
       offerService as any,
 
+      rankingService as any,
+
       {
         timeoutMs: 100,
         retries: 1,
         retryDelayMs: 1,
       },
+
+      realtimeService as any,
     );
 
     const results = await service.processRequest("request-id", providerRequest);
+
+    expect(results).toHaveLength(3);
 
     expect(
       results.every((result) => result.status === ProviderResultStatus.SUCCESS),
@@ -218,12 +300,29 @@ describe("ProviderService", () => {
 
     expect(providerResultService.saveResult).toHaveBeenCalledTimes(3);
 
-    // All three successful normalized offers must be persisted.
     expect(offerService.saveNormalizedOffer).toHaveBeenCalledTimes(3);
+
+    expect(rankingService.rankRequestOffers).toHaveBeenCalledTimes(1);
+
+    expect(rankingService.rankRequestOffers).toHaveBeenCalledWith("request-id");
 
     expect(requestService.updateStatus).toHaveBeenLastCalledWith(
       "request-id",
       RequestStatus.READY_FOR_REVIEW,
+    );
+
+    expect(realtimeService.safeEmitRequestStatus).toHaveBeenCalledWith(
+      "REQ_TEST",
+      RequestStatus.PROCESSING,
+    );
+
+    expect(realtimeService.safeEmitRequestStatus).toHaveBeenCalledWith(
+      "REQ_TEST",
+      RequestStatus.READY_FOR_REVIEW,
+      {
+        successfulProviders: 3,
+        totalProviders: 3,
+      },
     );
   });
 });

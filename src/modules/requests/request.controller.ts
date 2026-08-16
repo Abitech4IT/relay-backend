@@ -4,6 +4,8 @@ import { getIdempotencyKey } from "../../common/utils/idempotency-key";
 
 import { RequestService } from "./request.service";
 import { CreateServiceRequestBody } from "./request.schemas";
+import { RequestStatus } from "../../common/constants/request-status";
+import { realtimeService } from "../realtime/realtime.service";
 
 export class RequestController {
   constructor(private readonly requestService: RequestService) {}
@@ -17,6 +19,13 @@ export class RequestController {
 
     const { request: serviceRequest, replayed } =
       await this.requestService.create(userId, body, idempotencyKey);
+
+    if (!replayed) {
+      realtimeService.safeEmitRequestStatus(
+        serviceRequest.publicId,
+        RequestStatus.CREATED,
+      );
+    }
 
     res.status(replayed ? 200 : 201).json({
       success: true,

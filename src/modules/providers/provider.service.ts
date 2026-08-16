@@ -24,6 +24,8 @@ import {
   ProviderTimeoutError,
 } from "../../common/errors/provider.error";
 import { OfferService } from "../offers/offer.service";
+import { RankingService } from "../offers/ranking/ranking.service";
+import { RealtimeService } from "../realtime/realtime.service";
 
 interface ProviderServiceOptions {
   timeoutMs: number;
@@ -41,18 +43,41 @@ export class ProviderService {
 
     private readonly offerService: OfferService,
 
+    private readonly rankingService: RankingService,
+
     private readonly options: ProviderServiceOptions,
+
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async processRequest(
     requestId: string,
     providerRequest: ProviderRequest,
   ): Promise<ProviderExecutionResult[]> {
+    const publicRequestId = providerRequest.requestId;
+
     await this.requestService.updateStatus(requestId, RequestStatus.PROCESSING);
 
-    const executions = this.adapters.map((adapter) =>
-      this.executeProvider(adapter, providerRequest),
+    this.realtimeService.safeEmitRequestStatus(
+      publicRequestId,
+      RequestStatus.PROCESSING,
     );
+
+    const executions = this.adapters.map(async (adapter) => {
+      const result = await this.executeProvider(adapter, providerRequest);
+
+      this.realtimeService.safeEmitRequestStatus(
+        publicRequestId,
+        RequestStatus.PROCESSING,
+        {
+          provider: adapter.name,
+
+          providerStatus: result.status,
+        },
+      );
+
+      return result;
+    });
 
     const results = await Promise.all(executions);
 
@@ -62,23 +87,32 @@ export class ProviderService {
       ),
     );
 
-    await Promise.all(
-      results
-        .filter(
-          (
-            result,
-          ): result is ProviderExecutionResult & {
-            offer: NonNullable<ProviderExecutionResult["offer"]>;
-          } =>
-            result.status === ProviderResultStatus.SUCCESS &&
-            Boolean(result.offer),
-        )
-        .map((result) =>
-          this.offerService.saveNormalizedOffer(requestId, result.offer),
-        ),
+    const successfulResults = results.filter(
+      (
+        result,
+      ): result is ProviderExecutionResult & {
+        offer: NonNullable<ProviderExecutionResult["offer"]>;
+      } =>
+        result.status === ProviderResultStatus.SUCCESS && Boolean(result.offer),
     );
 
-    await this.updateRequestStatus(requestId, results);
+    await Promise.all(
+      successfulResults.map((result) =>
+        this.offerService.saveNormalizedOffer(requestId, result.offer),
+      ),
+    );
+
+    if (successfulResults.length > 0) {
+      await this.rankingService.rankRequestOffers(requestId);
+    }
+
+    const finalStatus = await this.updateRequestStatus(requestId, results);
+
+    this.realtimeService.safeEmitRequestStatus(publicRequestId, finalStatus, {
+      successfulProviders: successfulResults.length,
+
+      totalProviders: results.length,
+    });
 
     return results;
   }
@@ -183,29 +217,23 @@ export class ProviderService {
   private async updateRequestStatus(
     requestId: string,
     results: ProviderExecutionResult[],
-  ): Promise<void> {
+  ): Promise<RequestStatus> {
     const successful = results.filter(
       (result) => result.status === ProviderResultStatus.SUCCESS,
     );
 
+    let status: RequestStatus;
+
     if (successful.length === 0) {
-      await this.requestService.updateStatus(requestId, RequestStatus.FAILED);
-
-      return;
+      status = RequestStatus.FAILED;
+    } else if (successful.length < results.length) {
+      status = RequestStatus.PARTIAL_RESULTS;
+    } else {
+      status = RequestStatus.READY_FOR_REVIEW;
     }
 
-    if (successful.length < results.length) {
-      await this.requestService.updateStatus(
-        requestId,
-        RequestStatus.PARTIAL_RESULTS,
-      );
+    await this.requestService.updateStatus(requestId, status);
 
-      return;
-    }
-
-    await this.requestService.updateStatus(
-      requestId,
-      RequestStatus.READY_FOR_REVIEW,
-    );
+    return status;
   }
 }

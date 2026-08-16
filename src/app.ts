@@ -2,6 +2,9 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { errorHandler } from "./common/middleware/error-handler";
+import swaggerUi from "swagger-ui-express";
+
+import { swaggerSpec } from "./config/swagger";
 
 import { authenticate } from "./common/middleware/auth.middleware";
 import { requireRole } from "./common/middleware/role.middleware";
@@ -10,6 +13,7 @@ import { UserRole } from "./common/constants/roles";
 import authRoutes from "./modules/auth/auth.routes";
 import requestRoutes from "./modules/requests/request.routes";
 import attachmentRoutes from "./modules/attachments/attachment.routes";
+import adminRoutes from "./modules/admin/admin.routes";
 
 const app = express();
 
@@ -32,6 +36,14 @@ app.get("/health", (_req, res) => {
   });
 });
 
+app.use(
+  "/api/docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    explorer: true,
+  }),
+);
+
 app.get(
   "/api/admin/test",
   authenticate,
@@ -47,6 +59,7 @@ app.get(
 app.use("/api/auth", authRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api", attachmentRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.use(errorHandler);
 

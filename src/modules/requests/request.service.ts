@@ -3,9 +3,13 @@ import { QueryFailedError, Repository } from "typeorm";
 import { ConflictError, NotFoundError } from "../../common/errors";
 
 import { RequestStatus } from "../../common/constants/request-status";
+
 import { generateRequestPublicId } from "../../common/utils/request-id";
 
+import { generateRequestFingerprint } from "../../common/utils/request-fingerprint";
+
 import { ServiceRequest } from "./request.entity";
+
 import { CreateServiceRequestBody } from "./request.schemas";
 
 export class RequestService {
@@ -19,6 +23,8 @@ export class RequestService {
     request: ServiceRequest;
     replayed: boolean;
   }> {
+    const requestFingerprint = generateRequestFingerprint(input);
+
     const existing = await this.requestRepository.findOne({
       where: {
         userId,
@@ -27,6 +33,8 @@ export class RequestService {
     });
 
     if (existing) {
+      this.assertMatchingFingerprint(existing, requestFingerprint);
+
       return {
         request: existing,
         replayed: true,
@@ -51,6 +59,10 @@ export class RequestService {
       status: RequestStatus.CREATED,
 
       idempotencyKey,
+
+      requestFingerprint,
+
+      processingStartedAt: null,
     });
 
     try {
@@ -79,8 +91,14 @@ export class RequestService {
           });
 
           if (existingAfterConflict) {
+            this.assertMatchingFingerprint(
+              existingAfterConflict,
+              requestFingerprint,
+            );
+
             return {
               request: existingAfterConflict,
+
               replayed: true,
             };
           }
@@ -130,5 +148,37 @@ export class RequestService {
         status,
       },
     );
+  }
+
+  async claimForProcessing(requestId: string): Promise<boolean> {
+    const result = await this.requestRepository
+      .createQueryBuilder()
+      .update(ServiceRequest)
+      .set({
+        status: RequestStatus.PROCESSING,
+
+        processingStartedAt: new Date(),
+      })
+      .where("id = :requestId", {
+        requestId,
+      })
+      .andWhere("status = :status", {
+        status: RequestStatus.CREATED,
+      })
+      .execute();
+
+    return result.affected === 1;
+  }
+
+  private assertMatchingFingerprint(
+    existingRequest: ServiceRequest,
+    incomingFingerprint: string,
+  ): void {
+    if (existingRequest.requestFingerprint !== incomingFingerprint) {
+      throw new ConflictError(
+        "Idempotency key was already used with a different request payload",
+        "IDEMPOTENCY_KEY_REUSED",
+      );
+    }
   }
 }
