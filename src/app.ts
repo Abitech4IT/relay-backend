@@ -9,6 +9,7 @@ import { UserRole } from "./common/constants/roles";
 
 import authRoutes from "./modules/auth/auth.routes";
 import requestRoutes from "./modules/requests/request.routes";
+import attachmentRoutes from "./modules/attachments/attachment.routes";
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.get(
 
 app.use("/api/auth", authRoutes);
 app.use("/api/requests", requestRoutes);
+app.use("/api", attachmentRoutes);
 
 app.use(errorHandler);
 

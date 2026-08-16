@@ -77,7 +77,14 @@ describe("Service Requests", () => {
     if (AppDataSource.isInitialized) {
       const userRepository = AppDataSource.getRepository(User);
 
-      await userRepository.delete([userAId, userBId]);
+      // await userRepository.delete([userAId, userBId]);
+      const userIds = [userAId, userBId].filter((id): id is string =>
+        Boolean(id),
+      );
+
+      if (userIds.length > 0) {
+        await userRepository.delete(userIds);
+      }
 
       await AppDataSource.destroy();
     }

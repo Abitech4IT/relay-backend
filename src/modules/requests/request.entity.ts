@@ -4,6 +4,7 @@ import {
   Entity,
   Index,
   JoinColumn,
+  OneToMany,
   ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
@@ -11,6 +12,8 @@ import {
 } from "typeorm";
 
 import { User } from "../users/user.entity";
+import { Attachment } from "../attachments/attachment.entity";
+import { Offer } from "../offers/offer.entity";
 import { RequestStatus } from "../../common/constants/request-status";
 
 import { AssetData, CustomerProfile } from "./request.types";
@@ -40,6 +43,12 @@ export class ServiceRequest {
     type: "uuid",
   })
   userId!: string;
+
+  @OneToMany(() => Attachment, (attachment) => attachment.request)
+  attachments!: Attachment[];
+
+  @OneToMany(() => Offer, (offer) => offer.request)
+  offers!: Offer[];
 
   @ManyToOne(() => User, {
     nullable: false,

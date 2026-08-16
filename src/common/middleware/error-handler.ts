@@ -1,4 +1,5 @@
 import { ErrorRequestHandler, Request, Response, NextFunction } from "express";
+import multer from "multer";
 import { ZodError } from "zod";
 import { AppError } from "../errors";
 
@@ -33,6 +34,42 @@ export const errorHandler: ErrorRequestHandler = (
         ...(error.details !== undefined && {
           details: error.details,
         }),
+      },
+    });
+
+    return;
+  }
+
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: "ATTACHMENT_TOO_LARGE",
+          message: "Attachment exceeds the maximum allowed size",
+        },
+      });
+
+      return;
+    }
+
+    if (error.code === "LIMIT_FILE_COUNT") {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: "TOO_MANY_ATTACHMENTS",
+          message: "Too many attachments were provided",
+        },
+      });
+
+      return;
+    }
+
+    res.status(400).json({
+      success: false,
+      error: {
+        code: "INVALID_MULTIPART_REQUEST",
+        message: "Invalid attachment upload",
       },
     });
 

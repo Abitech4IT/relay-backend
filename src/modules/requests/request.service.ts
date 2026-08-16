@@ -120,4 +120,15 @@ export class RequestService {
       },
     });
   }
+
+  async updateStatus(requestId: string, status: RequestStatus): Promise<void> {
+    await this.requestRepository.update(
+      {
+        id: requestId,
+      },
+      {
+        status,
+      },
+    );
+  }
 }
