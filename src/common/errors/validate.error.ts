@@ -6,6 +6,8 @@ export class ValidationError extends AppError {
     code = "VALIDATION_ERROR",
     details?: unknown,
   ) {
-    super(message, 400, JSON.stringify({ code, details }));
+    super(message, 400, code, details);
+
+    this.name = "ValidationError";
   }
 }

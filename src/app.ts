@@ -3,6 +3,10 @@ import cors from "cors";
 import helmet from "helmet";
 import { errorHandler } from "./common/middleware/error-handler";
 
+import { authenticate } from "./common/middleware/auth.middleware";
+import { requireRole } from "./common/middleware/role.middleware";
+import { UserRole } from "./common/constants/roles";
+
 import authRoutes from "./modules/auth/auth.routes";
 import requestRoutes from "./modules/requests/request.routes";
 
@@ -26,6 +30,19 @@ app.get("/health", (_req, res) => {
     message: "Relay API is running",
   });
 });
+
+app.get(
+  "/api/admin/test",
+  authenticate,
+  requireRole(UserRole.ADMIN),
+  (_req, res) => {
+    res.status(200).json({
+      success: true,
+      message: "Admin access granted",
+    });
+  },
+);
+
 app.use("/api/auth", authRoutes);
 app.use("/api/requests", requestRoutes);
 
