@@ -16,7 +16,7 @@ import { Attachment } from "../attachments/attachment.entity";
 import { Offer } from "../offers/offer.entity";
 import { RequestStatus } from "../../common/constants/request-status";
 
-import { AssetData, CustomerProfile } from "./request.types";
+import type { AssetData, CustomerProfile } from "./request.types";
 
 @Entity({
   name: "service_requests",

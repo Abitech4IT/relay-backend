@@ -1,14 +1,11 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { errorHandler } from "./common/middleware/error-handler";
 import swaggerUi from "swagger-ui-express";
 
-import { swaggerSpec } from "./config/swagger";
+import { errorHandler } from "./common/middleware/error-handler";
 
-import { authenticate } from "./common/middleware/auth.middleware";
-import { requireRole } from "./common/middleware/role.middleware";
-import { UserRole } from "./common/constants/roles";
+import { swaggerSpec } from "./config/swagger";
 
 import authRoutes from "./modules/auth/auth.routes";
 import requestRoutes from "./modules/requests/request.routes";
@@ -22,13 +19,41 @@ app.use(helmet());
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN?.split(",") ?? "*",
+
     credentials: true,
   }),
 );
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
+app.use(
+  express.urlencoded({
+    extended: true,
+  }),
+);
+
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     tags:
+ *       - Health
+ *     summary: Health check
+ *     responses:
+ *       200:
+ *         description: Relay API is running.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Relay API is running
+ */
 app.get("/health", (_req, res) => {
   res.status(200).json({
     success: true,
@@ -44,21 +69,12 @@ app.use(
   }),
 );
 
-app.get(
-  "/api/admin/test",
-  authenticate,
-  requireRole(UserRole.ADMIN),
-  (_req, res) => {
-    res.status(200).json({
-      success: true,
-      message: "Admin access granted",
-    });
-  },
-);
-
 app.use("/api/auth", authRoutes);
+
 app.use("/api/requests", requestRoutes);
+
 app.use("/api", attachmentRoutes);
+
 app.use("/api/admin", adminRoutes);
 
 app.use(errorHandler);

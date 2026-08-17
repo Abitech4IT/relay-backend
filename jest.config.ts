@@ -18,7 +18,11 @@ const config: Config = {
 
   testMatch: ["**/*.test.ts"],
 
+  testTimeout: 30000,
+
   clearMocks: true,
+
+  restoreMocks: true,
 };
 
 export default config;

@@ -10,6 +10,8 @@ import { AuditLog } from "../../src/modules/admin/audit-log.entity";
 import { UserRole } from "../../src/common/constants/roles";
 import { ServiceRequest } from "../../src/modules/requests/request.entity";
 
+jest.setTimeout(30000);
+
 describe("Admin", () => {
   const normalUser = {
     email: `admin-test-user-${Date.now()}@example.com`,

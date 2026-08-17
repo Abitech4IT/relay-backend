@@ -6,9 +6,13 @@ import { RequestService } from "./request.service";
 import { CreateServiceRequestBody } from "./request.schemas";
 import { RequestStatus } from "../../common/constants/request-status";
 import { realtimeService } from "../realtime/realtime.service";
+import { OfferService } from "../offers/offer.service";
 
 export class RequestController {
-  constructor(private readonly requestService: RequestService) {}
+  constructor(
+    private readonly requestService: RequestService,
+    private readonly offerService: OfferService,
+  ) {}
 
   create = async (req: Request, res: Response) => {
     const userId = req.user!.id;
@@ -67,6 +71,61 @@ export class RequestController {
         requests: requests.map((serviceRequest) =>
           this.toResponse(serviceRequest),
         ),
+      },
+    });
+  };
+
+  getOffers = async (req: Request, res: Response) => {
+    const publicId = Array.isArray(req.params.publicId)
+      ? req.params.publicId[0]
+      : req.params.publicId;
+
+    const serviceRequest = await this.requestService.findOwnedByPublicId(
+      publicId,
+      req.user!.id,
+    );
+
+    const offers = await this.offerService.findAllForRequest(serviceRequest.id);
+
+    res.status(200).json({
+      success: true,
+
+      data: {
+        requestId: serviceRequest.publicId,
+
+        status: serviceRequest.status,
+
+        offers: offers.map((offer) => ({
+          id: offer.id,
+
+          provider: offer.provider,
+
+          baseAmount: Number(offer.baseAmount),
+
+          fees: Number(offer.fees),
+
+          totalAmount: Number(offer.totalAmount),
+
+          benefits: offer.benefits,
+
+          terms: offer.terms,
+
+          customerContribution: Number(offer.customerContribution),
+
+          validUntil: offer.validUntil,
+
+          estimatedFulfillmentMinutes: offer.estimatedFulfillmentMinutes,
+
+          status: offer.status,
+
+          rank: offer.rank,
+
+          score: offer.score !== null ? Number(offer.score) : null,
+
+          rankingExplanation: offer.rankingExplanation,
+
+          createdAt: offer.createdAt,
+        })),
       },
     });
   };

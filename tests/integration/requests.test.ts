@@ -294,4 +294,50 @@ describe("Service Requests", () => {
       ).toBe(false);
     });
   });
+
+  describe("GET /api/requests/:publicId/offers", () => {
+    it("should allow a user to view offers for their own request", async () => {
+      const createResponse = await request(app)
+        .post("/api/requests")
+        .set("Authorization", `Bearer ${userAToken}`)
+        .set("Idempotency-Key", `offers-own-${Date.now()}`)
+        .send(requestBody);
+
+      expect(createResponse.status).toBe(201);
+
+      const publicId = createResponse.body.data.request.id;
+
+      const response = await request(app)
+        .get(`/api/requests/${publicId}/offers`)
+        .set("Authorization", `Bearer ${userAToken}`);
+
+      expect(response.status).toBe(200);
+
+      expect(response.body.success).toBe(true);
+
+      expect(response.body.data.requestId).toBe(publicId);
+
+      expect(Array.isArray(response.body.data.offers)).toBe(true);
+    });
+
+    it("should not allow another user to view request offers", async () => {
+      const createResponse = await request(app)
+        .post("/api/requests")
+        .set("Authorization", `Bearer ${userAToken}`)
+        .set("Idempotency-Key", `offers-idor-${Date.now()}`)
+        .send(requestBody);
+
+      expect(createResponse.status).toBe(201);
+
+      const publicId = createResponse.body.data.request.id;
+
+      const response = await request(app)
+        .get(`/api/requests/${publicId}/offers`)
+        .set("Authorization", `Bearer ${userBToken}`);
+
+      expect(response.status).toBe(404);
+
+      expect(response.body.error.code).toBe("REQUEST_NOT_FOUND");
+    });
+  });
 });
