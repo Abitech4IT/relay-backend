@@ -18,6 +18,8 @@ const createProviderResultServiceMock = () => ({
 });
 
 const createRequestServiceMock = () => ({
+  claimForProcessing: jest.fn().mockResolvedValue(true),
+
   updateStatus: jest.fn().mockResolvedValue(undefined),
 });
 
@@ -150,10 +152,11 @@ describe("ProviderService", () => {
       "internal-request-id",
     );
 
-    expect(requestService.updateStatus).toHaveBeenCalledWith(
+    expect(requestService.claimForProcessing).toHaveBeenCalledWith(
       "internal-request-id",
-      RequestStatus.PROCESSING,
     );
+
+    expect(requestService.claimForProcessing).toHaveBeenCalledTimes(1);
 
     expect(requestService.updateStatus).toHaveBeenCalledWith(
       "internal-request-id",
@@ -324,5 +327,67 @@ describe("ProviderService", () => {
         totalProviders: 3,
       },
     );
+  });
+
+  it("should not process providers when the request has already been claimed", async () => {
+    const alpha = new AlphaAdapter({
+      delayMs: 1,
+    });
+
+    const beta = new BetaAdapter({
+      delayMs: 1,
+    });
+
+    const gamma = new GammaAdapter({
+      delayMs: 1,
+    });
+
+    const providerResultService = createProviderResultServiceMock();
+
+    const requestService = createRequestServiceMock();
+
+    requestService.claimForProcessing.mockResolvedValue(false);
+
+    const offerService = createOfferServiceMock();
+
+    const rankingService = createRankingServiceMock();
+
+    const realtimeService = createRealtimeServiceMock();
+
+    const service = new ProviderService(
+      [alpha, beta, gamma],
+
+      providerResultService as any,
+
+      requestService as any,
+
+      offerService as any,
+
+      rankingService as any,
+
+      {
+        timeoutMs: 100,
+        retries: 1,
+        retryDelayMs: 1,
+      },
+
+      realtimeService as any,
+    );
+
+    const results = await service.processRequest("request-id", providerRequest);
+
+    expect(results).toEqual([]);
+
+    expect(requestService.claimForProcessing).toHaveBeenCalledWith(
+      "request-id",
+    );
+
+    expect(providerResultService.saveResult).not.toHaveBeenCalled();
+
+    expect(offerService.saveNormalizedOffer).not.toHaveBeenCalled();
+
+    expect(rankingService.rankRequestOffers).not.toHaveBeenCalled();
+
+    expect(realtimeService.safeEmitRequestStatus).not.toHaveBeenCalled();
   });
 });

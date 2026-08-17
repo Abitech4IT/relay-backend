@@ -9,6 +9,7 @@ import { AuditLog } from "../../src/modules/admin/audit-log.entity";
 
 import { UserRole } from "../../src/common/constants/roles";
 import { ServiceRequest } from "../../src/modules/requests/request.entity";
+import { backgroundTaskTracker } from "../../src/common/utils/background-task-tracker";
 
 jest.setTimeout(30000);
 
@@ -127,6 +128,7 @@ describe("Admin", () => {
   });
 
   afterAll(async () => {
+    await backgroundTaskTracker.waitForAll();
     if (!AppDataSource.isInitialized) {
       return;
     }

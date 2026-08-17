@@ -25,12 +25,16 @@ export class RealtimeService {
     try {
       this.emitRequestStatus(publicRequestId, status, data);
     } catch (error) {
-      console.warn("Realtime status publish failed", {
-        requestId: publicRequestId,
-        status,
-        error:
-          error instanceof Error ? error.message : "Unknown realtime error",
-      });
+      if (process.env.NODE_ENV !== "test") {
+        console.warn("Realtime status publish failed", {
+          requestId: publicRequestId,
+
+          status,
+
+          error:
+            error instanceof Error ? error.message : "Unknown realtime error",
+        });
+      }
     }
   }
 }

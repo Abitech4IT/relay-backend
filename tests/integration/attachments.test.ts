@@ -5,6 +5,7 @@ import { AppDataSource } from "../../src/config/database";
 
 import { User } from "../../src/modules/users/user.entity";
 import { Attachment } from "../../src/modules/attachments/attachment.entity";
+import { backgroundTaskTracker } from "../../src/common/utils/background-task-tracker";
 
 describe("Attachments", () => {
   const userA = {
@@ -89,6 +90,7 @@ describe("Attachments", () => {
   });
 
   afterAll(async () => {
+    await backgroundTaskTracker.waitForAll();
     if (!AppDataSource.isInitialized) {
       return;
     }

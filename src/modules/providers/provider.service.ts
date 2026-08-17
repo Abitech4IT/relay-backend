@@ -56,7 +56,11 @@ export class ProviderService {
   ): Promise<ProviderExecutionResult[]> {
     const publicRequestId = providerRequest.requestId;
 
-    await this.requestService.updateStatus(requestId, RequestStatus.PROCESSING);
+    const claimed = await this.requestService.claimForProcessing(requestId);
+
+    if (!claimed) {
+      return [];
+    }
 
     this.realtimeService.safeEmitRequestStatus(
       publicRequestId,

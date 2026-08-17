@@ -2,16 +2,29 @@ import { Request, Response } from "express";
 
 import { getIdempotencyKey } from "../../common/utils/idempotency-key";
 
-import { RequestService } from "./request.service";
-import { CreateServiceRequestBody } from "./request.schemas";
 import { RequestStatus } from "../../common/constants/request-status";
-import { realtimeService } from "../realtime/realtime.service";
+
+import { RequestService } from "./request.service";
+
+import type { CreateServiceRequestBody } from "./request.schemas";
+
 import { OfferService } from "../offers/offer.service";
+
+import { ProviderService } from "../providers/provider.service";
+
+import { toProviderRequest } from "../providers/provider.mapper";
+
+import { realtimeService } from "../realtime/realtime.service";
+import { ServiceRequest } from "./request.entity";
+import { backgroundTaskTracker } from "../../common/utils/background-task-tracker";
 
 export class RequestController {
   constructor(
     private readonly requestService: RequestService,
+
     private readonly offerService: OfferService,
+
+    private readonly providerService: ProviderService,
   ) {}
 
   create = async (req: Request, res: Response) => {
@@ -31,7 +44,11 @@ export class RequestController {
       );
     }
 
-    res.status(replayed ? 200 : 201).json({
+    if (serviceRequest.status === RequestStatus.CREATED) {
+      this.startProviderProcessing(serviceRequest);
+    }
+
+    return res.status(replayed ? 200 : 201).json({
       success: true,
 
       data: {
@@ -43,16 +60,14 @@ export class RequestController {
   };
 
   getOne = async (req: Request, res: Response) => {
-    const publicId = Array.isArray(req.params.publicId)
-      ? req.params.publicId[0]
-      : req.params.publicId;
+    const publicId = this.getPublicId(req);
 
     const serviceRequest = await this.requestService.findOwnedByPublicId(
       publicId,
       req.user!.id,
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
 
       data: {
@@ -64,7 +79,7 @@ export class RequestController {
   getHistory = async (req: Request, res: Response) => {
     const requests = await this.requestService.findAllOwnedByUser(req.user!.id);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
 
       data: {
@@ -76,9 +91,7 @@ export class RequestController {
   };
 
   getOffers = async (req: Request, res: Response) => {
-    const publicId = Array.isArray(req.params.publicId)
-      ? req.params.publicId[0]
-      : req.params.publicId;
+    const publicId = this.getPublicId(req);
 
     const serviceRequest = await this.requestService.findOwnedByPublicId(
       publicId,
@@ -87,7 +100,7 @@ export class RequestController {
 
     const offers = await this.offerService.findAllForRequest(serviceRequest.id);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
 
       data: {
@@ -129,6 +142,31 @@ export class RequestController {
       },
     });
   };
+
+  private startProviderProcessing(serviceRequest: ServiceRequest): void {
+    const providerRequest = toProviderRequest(serviceRequest);
+
+    const processingTask = this.providerService
+      .processRequest(serviceRequest.id, providerRequest)
+      .catch((error) => {
+        console.error("Unexpected provider processing failure", {
+          requestId: serviceRequest.publicId,
+
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unknown provider processing error",
+        });
+      });
+
+    backgroundTaskTracker.track(processingTask);
+  }
+
+  private getPublicId(req: Request): string {
+    return Array.isArray(req.params.publicId)
+      ? req.params.publicId[0]
+      : req.params.publicId;
+  }
 
   private toResponse(serviceRequest: {
     publicId: string;

@@ -2,8 +2,16 @@ import request from "supertest";
 
 import app from "../../src/app";
 import { AppDataSource } from "../../src/config/database";
+
 import { User } from "../../src/modules/users/user.entity";
 import { ServiceRequest } from "../../src/modules/requests/request.entity";
+
+import { ProviderResult } from "../../src/modules/providers/provider-result.entity";
+import { Offer } from "../../src/modules/offers/offer.entity";
+
+import { backgroundTaskTracker } from "../../src/common/utils/background-task-tracker";
+
+import { RequestStatus } from "../../src/common/constants/request-status";
 
 describe("Service Requests", () => {
   const userA = {
@@ -35,6 +43,7 @@ describe("Service Requests", () => {
 
     asset: {
       type: "vehicle",
+
       identifier: "ABC-123",
 
       attributes: {
@@ -74,20 +83,23 @@ describe("Service Requests", () => {
   });
 
   afterAll(async () => {
-    if (AppDataSource.isInitialized) {
-      const userRepository = AppDataSource.getRepository(User);
+    await backgroundTaskTracker.waitForAll();
 
-      // await userRepository.delete([userAId, userBId]);
-      const userIds = [userAId, userBId].filter((id): id is string =>
-        Boolean(id),
-      );
-
-      if (userIds.length > 0) {
-        await userRepository.delete(userIds);
-      }
-
-      await AppDataSource.destroy();
+    if (!AppDataSource.isInitialized) {
+      return;
     }
+
+    const userRepository = AppDataSource.getRepository(User);
+
+    const userIds = [userAId, userBId].filter((id): id is string =>
+      Boolean(id),
+    );
+
+    if (userIds.length > 0) {
+      await userRepository.delete(userIds);
+    }
+
+    await AppDataSource.destroy();
   });
 
   describe("POST /api/requests", () => {
@@ -110,7 +122,7 @@ describe("Service Requests", () => {
 
       expect(response.body.data.request.category).toBe(requestBody.category);
 
-      expect(response.body.data.request.status).toBe("CREATED");
+      expect(response.body.data.request.status).toBe(RequestStatus.CREATED);
 
       expect(response.body.data.idempotentReplay).toBe(false);
     });
@@ -176,10 +188,36 @@ describe("Service Requests", () => {
       );
     });
 
+    it("should reject reuse of an idempotency key with a different payload", async () => {
+      const idempotencyKey = `fingerprint-${Date.now()}`;
+
+      const firstResponse = await request(app)
+        .post("/api/requests")
+        .set("Authorization", `Bearer ${userAToken}`)
+        .set("Idempotency-Key", idempotencyKey)
+        .send(requestBody);
+
+      expect(firstResponse.status).toBe(201);
+
+      const secondResponse = await request(app)
+        .post("/api/requests")
+        .set("Authorization", `Bearer ${userAToken}`)
+        .set("Idempotency-Key", idempotencyKey)
+        .send({
+          ...requestBody,
+
+          category: "different-service",
+        });
+
+      expect(secondResponse.status).toBe(409);
+
+      expect(secondResponse.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    });
+
     it("should create only one database record for the same idempotency key", async () => {
       const idempotencyKey = `db-duplicate-${Date.now()}`;
 
-      await Promise.all([
+      const responses = await Promise.all([
         request(app)
           .post("/api/requests")
           .set("Authorization", `Bearer ${userAToken}`)
@@ -193,11 +231,16 @@ describe("Service Requests", () => {
           .send(requestBody),
       ]);
 
+      expect(responses.map((response) => response.status).sort()).toEqual([
+        200, 201,
+      ]);
+
       const requestRepository = AppDataSource.getRepository(ServiceRequest);
 
       const count = await requestRepository.count({
         where: {
           userId: userAId,
+
           idempotencyKey,
         },
       });
@@ -275,6 +318,7 @@ describe("Service Requests", () => {
         });
 
       expect(userARequest.status).toBe(201);
+
       expect(userBRequest.status).toBe(201);
 
       const response = await request(app)
@@ -307,6 +351,8 @@ describe("Service Requests", () => {
 
       const publicId = createResponse.body.data.request.id;
 
+      await backgroundTaskTracker.waitForAll();
+
       const response = await request(app)
         .get(`/api/requests/${publicId}/offers`)
         .set("Authorization", `Bearer ${userAToken}`);
@@ -318,6 +364,68 @@ describe("Service Requests", () => {
       expect(response.body.data.requestId).toBe(publicId);
 
       expect(Array.isArray(response.body.data.offers)).toBe(true);
+
+      expect(response.body.data.offers.length).toBeGreaterThan(0);
+    });
+
+    it("should process providers and persist offers after request creation", async () => {
+      const response = await request(app)
+        .post("/api/requests")
+        .set("Authorization", `Bearer ${userAToken}`)
+        .set("Idempotency-Key", `provider-e2e-${Date.now()}`)
+        .send(requestBody);
+
+      expect(response.status).toBe(201);
+
+      const publicId = response.body.data.request.id;
+
+      await backgroundTaskTracker.waitForAll();
+
+      const serviceRequest = await AppDataSource.getRepository(
+        ServiceRequest,
+      ).findOneOrFail({
+        where: {
+          publicId,
+        },
+      });
+
+      const providerResults = await AppDataSource.getRepository(
+        ProviderResult,
+      ).find({
+        where: {
+          requestId: serviceRequest.id,
+        },
+      });
+
+      const offers = await AppDataSource.getRepository(Offer).find({
+        where: {
+          requestId: serviceRequest.id,
+        },
+
+        order: {
+          rank: "ASC",
+        },
+      });
+
+      expect(providerResults).toHaveLength(3);
+
+      expect(offers.length).toBeGreaterThan(0);
+
+      expect(serviceRequest.status).not.toBe(RequestStatus.CREATED);
+
+      expect([
+        RequestStatus.PARTIAL_RESULTS,
+        RequestStatus.READY_FOR_REVIEW,
+        RequestStatus.FAILED,
+      ]).toContain(serviceRequest.status);
+
+      if (offers.length > 0) {
+        expect(serviceRequest.status).not.toBe(RequestStatus.FAILED);
+      }
+
+      expect(offers.every((offer) => offer.rank !== null)).toBe(true);
+
+      expect(offers.every((offer) => offer.score !== null)).toBe(true);
     });
 
     it("should not allow another user to view request offers", async () => {
